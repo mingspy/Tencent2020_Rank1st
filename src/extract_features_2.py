@@ -1,7 +1,7 @@
 import os
 import random
 import json
-import gc
+import gc, csv
 import pickle
 import gensim
 import pandas as pd
@@ -10,49 +10,37 @@ from gensim.models import Word2Vec
 from sklearn import preprocessing
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
 
-def get_agg_features(dfs,f1,f2,agg,log):
-    #判定特殊情况
-    if type(f1)==str:
-        f1=[f1]
-    if agg!='size':
-        data=log[f1+[f2]]
-    else:
-        data=log[f1]
-    f_name='_'.join(f1)+"_"+f2+"_"+agg
-    #聚合操作
-    if agg=="size":
-        tmp = pd.DataFrame(data.groupby(f1).size()).reset_index()
-    elif agg=="count":
-        tmp = pd.DataFrame(data.groupby(f1)[f2].count()).reset_index()
-    elif agg=="mean":
-        tmp = pd.DataFrame(data.groupby(f1)[f2].mean()).reset_index()
-    elif agg=="unique":
-        tmp = pd.DataFrame(data.groupby(f1)[f2].nunique()).reset_index()
-    elif agg=="max":
-        tmp = pd.DataFrame(data.groupby(f1)[f2].max()).reset_index()
-    elif agg=="min":
-        tmp = pd.DataFrame(data.groupby(f1)[f2].min()).reset_index()
-    elif agg=="sum":
-        tmp = pd.DataFrame(data.groupby(f1)[f2].sum()).reset_index()
-    elif agg=="std":
-        tmp = pd.DataFrame(data.groupby(f1)[f2].std()).reset_index()
-    elif agg=="median":
-        tmp = pd.DataFrame(data.groupby(f1)[f2].median()).reset_index()
-    else:
-        raise "agg error"
-    #赋值聚合特征
-    for df in dfs:
-        try:
-            del df[f_name]
-        except:
-            pass
-        tmp.columns = f1+[f_name]
-        df[f_name]=df.merge(tmp, on=f1, how='left')[f_name]
-    del tmp
-    del data
+def get_agg_features(log_file):
+    # user_id__size_agg, user_id_ad_id_unique_agg, user_id_creative_id_unique_agg,
+    # user_id_industry_unique_agg, user_id_product_id_unique_agg, user_id_time_unique_agg
+    # user_id_click_times_sum_agg, user_id_click_times_mean_agg, user_id_click_times_std_agg
+    inf = open(log_file)
+    reader = csv.reader(inf)
+    head = next(reader)
+    header = {h:idx for idx,h in enumerate(head)}
+    print('head', head, header)
+    features = {}
+    feat_keys = ['ad_id', 'creative_id','advertiser_id', "industry", "product_id", 'time', 'click_times', 'product_category']
+    for line in reader:
+        user_id = line[header['user_id']]
+        if user_id not in features:
+            tmp = {k:[] for k in feat_keys}
+            tmp['count'] = 0
+            features[user_id] = tmp
+        features[user_id]['count'] += 1
+        for k in feat_keys:
+            features[user_id][k].append(line[header[k]])
+    aggs = {}
+    for user_id, feats in features.items():
+        tmp['user_id__size_agg'] = feats['count']
+        for k in feat_keys[:-2]:
+            key = 'user_id_' + k + '_unique_agg'
+            tmp[key] = len(set(feats[k]))
+        tmp['user_id_click_times_sum_agg'] = np.sum(feats['click_times'])
+        tmp['user_id_click_times_mean_agg'] = np.mean(feats['click_times'])
+        tmp['user_id_click_times_std_agg'] = np.std(feats['click_times'])
     gc.collect()
-    return [f_name]
-
+    return aggs, features
 
 def sequence_text(dfs,f1,f2,log):
     f_name='sequence_text_'+f1+'_'+f2
@@ -70,13 +58,15 @@ def sequence_text(dfs,f1,f2,log):
     temp=pd.DataFrame(items)
     temp.columns=[f1,f_name]
     temp = temp.drop_duplicates(f1)
-    for df in dfs:
+    for idx,df in enumerate(dfs):
         try:
             del df[f_name]
         except:
             pass
         temp.columns = [f1]+[f_name]
-        df[f_name]=df.merge(temp, on=f1, how='left')[f_name]
+        ##df[f_name]=df.merge(temp, on=f1, how='left')[f_name]
+    temp.to_csv('data/%s.csv'%f_name)
+
     gc.collect()
     del temp
     del items
@@ -154,31 +144,19 @@ def kfold_sequence(train_df,test_df,log_data,pivot):
     return kfold_sequence_features
 
 if __name__ == "__main__":
-    #读取数据
-    click_log=pd.read_csv('data/click.csv')
-    train_df=pd.read_csv('data/train_user.csv')
-    test_df=pd.read_csv('data/test_user.csv')
-    print(click_log.shape,train_df.shape,test_df.shape)
-    ################################################################################
     #获取聚合特征
     print("Extracting aggregate feature...")
-    agg_features=[]
-    agg_features+=get_agg_features([train_df,test_df],'user_id','','size',click_log)
-    agg_features+=get_agg_features([train_df,test_df],'user_id','ad_id','unique',click_log)
-    agg_features+=get_agg_features([train_df,test_df],'user_id','creative_id','unique',click_log)
-    agg_features+=get_agg_features([train_df,test_df],'user_id','advertiser_id','unique',click_log)
-    agg_features+=get_agg_features([train_df,test_df],'user_id','industry','unique',click_log)
-    agg_features+=get_agg_features([train_df,test_df],'user_id','product_id','unique',click_log)
-    agg_features+=get_agg_features([train_df,test_df],'user_id','time','unique',click_log)
-    agg_features+=get_agg_features([train_df,test_df],'user_id','click_times','sum',click_log)
-    agg_features+=get_agg_features([train_df,test_df],'user_id','click_times','mean',click_log)
-    agg_features+=get_agg_features([train_df,test_df],'user_id','click_times','std',click_log)
-    train_df[agg_features]=train_df[agg_features].fillna(-1)
-    test_df[agg_features]=test_df[agg_features].fillna(-1)
+    aggs, features = get_agg_features('data/click.csv')
+    aggs = pd.DataFrame(aggs).fillna(-1)
+    aggs.to_csv('data/user_id_agg_features.csv')
     print("Extracting aggregate feature done!")
     print("List aggregate feature names:")
-    print(agg_features)
+    print(aggs.header)
+    sys.exit()
+
     ################################################################################
+    train_df=pd.read_csv('data/train_user.csv')
+    test_df=pd.read_csv('data/test_user.csv')
     #获取序列特征，用户点击的id序列
     print("Extracting sequence feature...")
     text_features=[]
@@ -193,6 +171,9 @@ if __name__ == "__main__":
     print("Extracting sequence feature done!")
     print("List sequence feature names:")
     print(text_features)
+
+    sys.exit()
+
     ################################################################################
     #获取K折统计特征，求出用户点击的所有记录的年龄性别平均分布
     #赋值index,训练集为0-4，测试集为5

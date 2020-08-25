@@ -7,15 +7,15 @@ def merge_files():
     click_df=pd.read_csv("data/train_preliminary/click_log.csv")
     click_df=click_df.append(pd.read_csv("data/train_semi_final/click_log.csv"))
     click_df=click_df.append(pd.read_csv("data/test/click_log.csv"))
-    click_df=click_df.sort_values(by=["time"]).drop_duplicates()   
-    
+    click_df=click_df.sort_values(by=["time"]).drop_duplicates()
+
     #合并广告信息
     print("merge ad files...")
     ad_df=pd.read_csv("data/train_preliminary/ad.csv")
     ad_df=ad_df.append(pd.read_csv("data/train_semi_final/ad.csv"))
     ad_df=ad_df.append(pd.read_csv("data/test/ad.csv"))
-    ad_df=ad_df.drop_duplicates() 
-    
+    ad_df=ad_df.drop_duplicates()
+
     #合并用户信息
     print("merge user files...")
     train_user=pd.read_csv("data/train_preliminary/user.csv")
@@ -37,18 +37,21 @@ def merge_files():
     for f in click_df:
         click_df[f]=click_df[f].astype(int)
     for i in range(10):
-        click_df['age_{}'.format(i)]=(click_df['age']==i).astype(np.int16) 
+        click_df['age_{}'.format(i)]=(click_df['age']==i).astype(np.int16)
     for i in range(2):
-        click_df['gender_{}'.format(i)]=(click_df['gender']==i).astype(np.int16) 
-    
-    
+        click_df['gender_{}'.format(i)]=(click_df['gender']==i).astype(np.int16)
+
+
     return click_df,train_user,test_user
 
 
 if __name__ == "__main__":
-    click_df,train_user,test_user=merge_files() 
+    click_df,train_user,test_user=merge_files()
     #保存预处理文件
     print("preprocess done! saving data...")
-    click_df.to_pickle("data/click.pkl")
-    train_user.to_pickle("data/train_user.pkl")
-    test_user.to_pickle("data/test_user.pkl")
+    #click_df.to_pickle("data/click.pkl")
+    #train_user.to_pickle("data/train_user.pkl")
+    #test_user.to_pickle("data/test_user.pkl")
+    train_user.to_csv("data/train_user.csv")
+    test_user.to_csv("data/test_user.csv")
+    click_df.to_csv("data/click.csv")
